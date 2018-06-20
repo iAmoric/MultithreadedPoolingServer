@@ -16,8 +16,8 @@ public class Main {
         int port = DEFAULT_PORT;
         HttpServer httpServer = null;
         ExecutorService executor = null;
-        
-        // dynamically defines the number of threads
+
+        // dynamically defines the number of threads for the threads pool
         int max_thread = Runtime.getRuntime().availableProcessors();
         executor = Executors.newFixedThreadPool(max_thread);
 
@@ -35,7 +35,7 @@ public class Main {
         else {
             System.out.println("No port specify. Use default port (" + DEFAULT_PORT + ")");
         }
-        
+
         try {
             httpServer = HttpServer.create(new InetSocketAddress(port), 0);
         } catch (IOException e) {
