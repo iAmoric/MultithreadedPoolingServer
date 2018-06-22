@@ -5,6 +5,8 @@ import com.sun.net.httpserver.HttpHandler;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
 
 public class RequestHandler implements HttpHandler {
 
@@ -17,6 +19,7 @@ public class RequestHandler implements HttpHandler {
         String clientAddr = httpExchange.getRemoteAddress().getHostString();
         System.out.println("\nHandle request for " + clientAddr);
 
+        // Only support HTTP/1.1 protocol
         if (!httpExchange.getProtocol().equalsIgnoreCase("HTTP/1.1")){
             System.err.println("Unsupported protocol");
             httpExchange.close();
@@ -24,17 +27,27 @@ public class RequestHandler implements HttpHandler {
         }
 
         // Get Keep-alive header
-        boolean keepAlive = false;
+        boolean keepAlive = true;
         Headers headers = httpExchange.getRequestHeaders();
         if (headers.containsKey("Connection")) {
             for (String value : headers.get("Connection")) {
-                if (value.equalsIgnoreCase("Keep-Alive")) {
-                    keepAlive = true;
+                if (value.equalsIgnoreCase("Close")) {
+                    keepAlive = false;
                 }
             }
         }
-
         System.out.println("Persistent connection: " + keepAlive);
+
+        //
+        String path = httpExchange.getRequestURI().getPath();
+
+        // Get Query parameterss
+        String paramString = httpExchange.getRequestURI().getRawQuery();
+        Map<String, String> paramsMap = getParams(paramString);
+        System.out.println("Query parameters:");
+        for (Map.Entry<String, String> e : paramsMap.entrySet()) {
+            System.out.println("\t" + e.getKey() + ": " + e.getValue());
+        }
 
         // Get URI
         // TODO
@@ -72,5 +85,24 @@ public class RequestHandler implements HttpHandler {
 
     private void handlePostMethod(HttpExchange httpExchange) throws IOException {
         // TODO: parse URL to get params
+    }
+
+    private Map<String, String> getParams(String paramsString) {
+        String paramDelimiter = "&";
+        String valueDelimiter = "=";
+
+        Map<String, String> paramsMap = new HashMap<>();
+
+        for (String params : paramsString.split(paramDelimiter)) {
+            String[] values = params.split(valueDelimiter);
+            if (values.length == 2) {
+                paramsMap.put(values[0], values[1]);
+            } else if (values.length == 1 ) {
+                paramsMap.put(values[0], null);
+            } else {
+                System.err.println("Error while parsing URI query");
+            }
+        }
+        return paramsMap;
     }
 }
