@@ -1,11 +1,9 @@
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import org.json.JSONObject;
 
 import java.io.*;
-import java.net.URI;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -13,8 +11,13 @@ public class RequestHandler implements HttpHandler {
 
 
     private static int STATUS_OK = 200;
+    private static int STATUS_CREATED = 201;
+    private static int STATUS_BAD_REQUEST = 400;
+    private static int STATUS_FORBIDDEN = 403;
     private static int STATUS_NOT_FOUND = 404;
-    private static String WEB_ROOT_DIRECTORY = System.getProperty("user.dir") + "/web";
+    private static int STATUS_SERVER_ERROR = 500;
+
+    private static String WEB_ROOT_DIRECTORY = "/web";
 
     @Override
     // Only use local variable to be thread safe
@@ -24,7 +27,8 @@ public class RequestHandler implements HttpHandler {
 
         // Only support HTTP/1.1 protocol
         if (!httpExchange.getProtocol().equalsIgnoreCase("HTTP/1.1")){
-            System.err.println("Unsupported protocol");
+            System.err.println("Unsupported http protocol: " + httpExchange.getProtocol());
+            httpExchange.sendResponseHeaders(STATUS_BAD_REQUEST, 0);
             httpExchange.close();
             return;
         }
@@ -32,30 +36,20 @@ public class RequestHandler implements HttpHandler {
         // Get Keep-alive header
         boolean keepAlive = getKeepAlive(httpExchange);
 
-
-        // Get Query parameterss
-        String paramString = httpExchange.getRequestURI().getRawQuery();
-        if (paramString != null) {
-            System.out.println(paramString);
-            Map<String, String> paramsMap = getParams(paramString);
-            System.out.println("Query parameters:");
-            for (Map.Entry<String, String> e : paramsMap.entrySet()) {
-                System.out.println("\t" + e.getKey() + ": " + e.getValue());
-            }
-        }
-
         // Get Method
         String method = httpExchange.getRequestMethod();
-        System.out.println(method);
+        System.out.println("Method: " + method);
         switch (method) {
             case "GET":
-                handleGetMethod(httpExchange);
+                handleGetMethod(httpExchange, clientAddr);
                 break;
             case "POST":
-                handlePostMethod(httpExchange);
+                handlePostMethod(httpExchange, clientAddr);
                 break;
             default:
                 System.err.println("\tUnsupported Http method: " + method);
+                httpExchange.sendResponseHeaders(STATUS_BAD_REQUEST, 0);
+                httpExchange.close();
                 break;
         }
 
@@ -67,21 +61,22 @@ public class RequestHandler implements HttpHandler {
     }
 
     /**
-     *
-     * @param httpExchange
+     * Handle GET method. Returns the content of the requested file if found. Otherwise send 404 response
+     * @param httpExchange HttpExchange object
+     * @param clientAddr ip address of the client
      * @throws IOException
      */
-    private synchronized void handleGetMethod(HttpExchange httpExchange) throws IOException{
+    private synchronized void handleGetMethod(HttpExchange httpExchange, String clientAddr) throws IOException {
         // Get requested path
         String path = httpExchange.getRequestURI().getPath();
-        OutputStream os = httpExchange.getResponseBody();
+
+        System.out.println(clientAddr + " requested " + getAbsolutePath(path));
 
         // Get file for the response
         File file = getFile(path);
         if (file == null) {
-            String response = path + " : Page not found\n";
-            httpExchange.sendResponseHeaders(STATUS_NOT_FOUND, response.length());
-            os.write(response.getBytes());
+            System.err.println(getAbsolutePath(path) + ": file not found");
+            httpExchange.sendResponseHeaders(STATUS_NOT_FOUND, 0);
         }
         else {
             // Add content-type to the response header
@@ -95,19 +90,74 @@ public class RequestHandler implements HttpHandler {
 
             // Send content to the client
             httpExchange.sendResponseHeaders(STATUS_OK, file.length());
+            OutputStream os = httpExchange.getResponseBody();
             os.write(b,0, b.length);
+            os.flush();
+            os.close();
+            System.out.println("Content sent to " + clientAddr + " with " + STATUS_OK + " response");
         }
-        os.flush();
-        os.close();
+
     }
 
-    private synchronized void handlePostMethod(HttpExchange httpExchange) throws IOException {
-        // TODO: parse URL to get params
+    /**
+     * Handle POST method. Post the content of the query in json format in the file.
+     * Send forbidden response
+     * @param httpExchange HttpExchange object
+     * @param clientAddr ip address of the client
+     * @throws IOException
+     */
+    private synchronized void handlePostMethod(HttpExchange httpExchange, String clientAddr) throws IOException {
+        // Get requested path
+        String path = httpExchange.getRequestURI().getPath();
+
+        System.out.println(clientAddr + " requested " + getAbsolutePath(path));
+
+        // only access to post.html.html file - do not modify index.html and directory/file.html
+        // return 403 forbidden
+        File file = getFile(path);
+        if (file == null) {
+            System.err.println(getAbsolutePath(path) + ": file not found");
+            httpExchange.sendResponseHeaders(STATUS_NOT_FOUND, 0);
+        }
+        else if (!path.equalsIgnoreCase("/post.html")) {
+            System.err.println(getAbsolutePath(path) + ": resources forbidden with post method");
+            httpExchange.sendResponseHeaders(STATUS_FORBIDDEN, 0);
+        }
+        else {
+            // Get Query parameters
+            String paramString = httpExchange.getRequestURI().getRawQuery();
+            Map<String, String> paramsMap = null;
+            if (paramString != null) {
+                paramsMap = getParams(paramString);
+            }
+            if (paramsMap == null ) {
+                httpExchange.sendResponseHeaders(STATUS_BAD_REQUEST, 0);
+            }
+            else {
+                // Just write content into file
+                JSONObject jsonObject = new JSONObject(paramsMap);
+                FileWriter fw = new FileWriter(getAbsolutePath(path));
+                fw.write(jsonObject.toString() + "\n");
+                fw.flush();
+                System.out.println(jsonObject.toString() + " written to " + getAbsolutePath(path));
+                httpExchange.sendResponseHeaders(STATUS_CREATED, 0);
+                System.out.println("Response with " + STATUS_CREATED);
+            }
+        }
+    }
+
+    /**
+     * Returns an absolute path for a given relative path
+     * @param path relative path
+     * @return absolute path
+     */
+    private String getAbsolutePath(String path) {
+        return System.getProperty("user.dir") + WEB_ROOT_DIRECTORY + path;
     }
 
     /**
      * Return a Map of every parameters in the request paramsString
-     * @param paramsString
+     * @param paramsString query string
      * @return paramsMap
      */
     private synchronized Map<String, String> getParams(String paramsString) {
@@ -124,6 +174,7 @@ public class RequestHandler implements HttpHandler {
                 paramsMap.put(values[0], null);
             } else {
                 System.err.println("Error while parsing URI query");
+                return null;
             }
         }
         return paramsMap;
@@ -131,11 +182,11 @@ public class RequestHandler implements HttpHandler {
 
     /**
      * Get and return a file at a given path
-     * @param path
+     * @param path path of the file
      * @return File if the file has been found, or null otherwise
      */
     private File getFile(String path) {
-        File f = new File(WEB_ROOT_DIRECTORY, path);
+        File f = new File(getAbsolutePath(path));
 
         if(f.exists() && !f.isDirectory()) {
             return f;
@@ -143,6 +194,11 @@ public class RequestHandler implements HttpHandler {
         return null;
     }
 
+    /**
+     * Test if the Http header contains the 'Connection' header, and then if this header is set to 'Close'
+     * @param httpExchange HttpExchange object
+     * @return boolean. False if 'Connection: Close' is set, True otherwise
+     */
     private boolean getKeepAlive(HttpExchange httpExchange) {
         boolean keepAlive = true;
         Headers headers = httpExchange.getRequestHeaders();
