@@ -30,16 +30,8 @@ public class RequestHandler implements HttpHandler {
         }
 
         // Get Keep-alive header
-        boolean keepAlive = true;
-        Headers headers = httpExchange.getRequestHeaders();
-        if (headers.containsKey("Connection")) {
-            for (String value : headers.get("Connection")) {
-                if (value.equalsIgnoreCase("Close")) {
-                    keepAlive = false;
-                }
-            }
-        }
-        System.out.println("Persistent connection: " + keepAlive);
+        boolean keepAlive = getKeepAlive(httpExchange);
+
 
         // Get Query parameterss
         String paramString = httpExchange.getRequestURI().getRawQuery();
@@ -149,5 +141,19 @@ public class RequestHandler implements HttpHandler {
             return f;
         }
         return null;
+    }
+
+    private boolean getKeepAlive(HttpExchange httpExchange) {
+        boolean keepAlive = true;
+        Headers headers = httpExchange.getRequestHeaders();
+        if (headers.containsKey("Connection")) {
+            for (String value : headers.get("Connection")) {
+                if (value.equalsIgnoreCase("Close")) {
+                    keepAlive = false;
+                }
+            }
+        }
+        System.out.println("Persistent connection: " + keepAlive);
+        return keepAlive;
     }
 }
