@@ -151,8 +151,27 @@ public class RequestHandler implements HttpHandler {
      * @param path relative path
      * @return absolute path
      */
+    // TODO: make a global variable for the root path. Not having to recalculate each time
     private String getAbsolutePath(String path) {
-        return System.getProperty("user.dir") + WEB_ROOT_DIRECTORY + path;
+        String[] pathSplit = System.getProperty("user.dir").split(File.separator);
+
+        // Get the last occurence of "MultithreadedPoolingServer" in the path
+        int index = pathSplit.length-1;
+        for (int i = pathSplit.length-1; i > 0; i--){
+            if (pathSplit[i].equalsIgnoreCase("MultithreadedPoolingServer")){
+                index = i;
+                break;
+            }
+        }
+
+        // Compute the absolute path
+        StringBuilder absolutePath = new StringBuilder();
+        for (int i = 0; i <= index; i++) {
+            absolutePath.append(File.separator).append(pathSplit[i]);
+        }
+        absolutePath.append(WEB_ROOT_DIRECTORY).append(path);
+
+        return absolutePath.toString();
     }
 
     /**
