@@ -33,6 +33,8 @@ For the `POST` requests, you can pass parameters via the url, like for example:
 
 For this project, I've chosen to convert the parameters into JSON object, and then just print it on the `post.html` file. It is only to illustrate a `POST` request.
 
+This server supports the keep-alive connection with the specific request headers from the client. If the request header contains `Connection: Close` (as specifiy for `HTTP/1.1`), the connection is closed after the server has responded to the client. Otherwise, the connection is kept open, since that's the default behavior of `HTTP/1.1`.
+
 ## Author
 
 * [**Lucas Pierrat**](https://github.com/iAmoric) - [contact](mailto:pierratlucas@gmail.com)
